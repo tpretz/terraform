@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/apparentlymart/go-versions/versions"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -599,9 +600,69 @@ func (c *ZeroThirteenUpgradeCommand) detectProviderSources(requiredProviders map
 		// parse process, because we know that without an explicit source it is
 		// not explicitly specified.
 		addr := addrs.NewLegacyProvider(name)
-		p, err := getproviders.LookupLegacyProvider(addr, source)
+		p, redirect, err := getproviders.LookupLegacyProvider(addr, source)
 		if err == nil {
 			rp.Type = p
+
+			if !redirect.IsZero() {
+				// If there's no version constraint, always use the redirect
+				// target as there should be at least one version we can
+				// install
+				if len(rp.Requirement.Required) == 0 {
+					rp.Type = redirect
+					continue
+				}
+
+				// Check that the redirect target has a version meeting our
+				// constraints
+				constraints, err := getproviders.ParseVersionConstraints(rp.Requirement.Required.String())
+				if err != nil {
+					diags = diags.Append(&hcl.Diagnostic{
+						Severity: hcl.DiagError,
+						Summary:  "Invalid version constraint",
+						// The errors returned by ParseVersionConstraint
+						// already include the section of input that was
+						// incorrect, so we don't need to
+						// include that here.
+						Detail:  fmt.Sprintf("Incorrect version constraint syntax: %s.", err.Error()),
+						Subject: rp.Requirement.DeclRange.Ptr(),
+					})
+					continue
+				}
+				acceptable := versions.MeetingConstraints(constraints)
+				available, _, err := source.AvailableVersions(redirect)
+				// If something goes wrong with the registry lookup here, fall
+				// back to the non-redirect provider
+				if err != nil {
+					diags = diags.Append(tfdiags.Sourceless(
+						tfdiags.Warning,
+						"Failed to query available provider packages",
+						fmt.Sprintf("Could not retrieve the list of available versions for provider %s: %s",
+							redirect.ForDisplay(), err),
+					))
+					continue
+				}
+
+				// Walk backwards to consider newer versions first
+				for i := len(available) - 1; i >= 0; i-- {
+					if acceptable.Has(available[i]) {
+						// Success! Provider redirect target has a version
+						// meeting our constraints, so we can use it
+						rp.Type = redirect
+						continue
+					}
+				}
+
+				// If we fall through here, no versions at the target meet our
+				// version constraints, so warn the user
+				diags = diags.Append(tfdiags.Sourceless(
+					tfdiags.Warning,
+					"Provider has moved",
+					fmt.Sprintf(
+						"Provider %q has moved to %q. You will need to upgrade to a new version before changing the source.",
+						p.Type, redirect.ForDisplay()),
+				))
+			}
 		} else {
 			// Setting the provider address to a zero value struct
 			// indicates that there is no known FQN for this provider,
