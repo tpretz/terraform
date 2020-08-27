@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-cleanhttp"
@@ -86,6 +87,24 @@ func New() backend.Backend {
 				Default:     30,
 				Description: "The maximum time in seconds to wait between HTTP request attempts.",
 			},
+			"workspace_path_element": &schema.Schema{
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "The URL path string to replace with the active workspace name.",
+			},
+			"workspace_list_address": &schema.Schema{
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "The address of the workspace list REST endpoint.",
+			},
+			"headers": &schema.Schema{
+				Type:     schema.TypeMap,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type:        schema.TypeString,
+					Description: "Header Value",
+				},
+			},
 		},
 	}
 
@@ -97,50 +116,69 @@ func New() backend.Backend {
 type Backend struct {
 	*schema.Backend
 
-	client *httpClient
+	client               *httpClient
+	workspacePathElement string
+	ctx                  context.Context
+}
+
+func (b *Backend) parseUrl(ctx context.Context, key string, optional bool, replaceOld string, replaceNew string) (*url.URL, error) {
+	data := schema.FromContextBackendConfig(ctx)
+	// if required, try to use
+	// if optional, and not present, skip
+	if v, ok := data.GetOk(key); (ok && v.(string) != "") || !optional {
+		if replaceOld != "" {
+			v = strings.ReplaceAll(v.(string), replaceOld, replaceNew)
+		}
+		return b.parseUrlValue(key, v.(string))
+	}
+	return nil, nil
+}
+
+func (b *Backend) parseUrlValue(key string, address string) (*url.URL, error) {
+	urlObj, err := url.Parse(address)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse %s URL: %s", key, err)
+	}
+	if urlObj.Scheme != "http" && urlObj.Scheme != "https" {
+		return nil, fmt.Errorf("%s must be HTTP or HTTPS", key)
+	}
+	return urlObj, nil
 }
 
 func (b *Backend) configure(ctx context.Context) error {
 	data := schema.FromContextBackendConfig(ctx)
+	b.ctx = ctx
 
-	address := data.Get("address").(string)
-	updateURL, err := url.Parse(address)
+	updateURL, err := b.parseUrl(ctx, "address", false, "", "")
 	if err != nil {
-		return fmt.Errorf("failed to parse address URL: %s", err)
+		return err
 	}
-	if updateURL.Scheme != "http" && updateURL.Scheme != "https" {
-		return fmt.Errorf("address must be HTTP or HTTPS")
-	}
-
 	updateMethod := data.Get("update_method").(string)
 
-	var lockURL *url.URL
-	if v, ok := data.GetOk("lock_address"); ok && v.(string) != "" {
-		var err error
-		lockURL, err = url.Parse(v.(string))
-		if err != nil {
-			return fmt.Errorf("failed to parse lockAddress URL: %s", err)
-		}
-		if lockURL.Scheme != "http" && lockURL.Scheme != "https" {
-			return fmt.Errorf("lockAddress must be HTTP or HTTPS")
-		}
+	lockURL, err := b.parseUrl(ctx, "lock_address", true, "", "")
+	if err != nil {
+		return err
 	}
-
 	lockMethod := data.Get("lock_method").(string)
 
-	var unlockURL *url.URL
-	if v, ok := data.GetOk("unlock_address"); ok && v.(string) != "" {
-		var err error
-		unlockURL, err = url.Parse(v.(string))
-		if err != nil {
-			return fmt.Errorf("failed to parse unlockAddress URL: %s", err)
-		}
-		if unlockURL.Scheme != "http" && unlockURL.Scheme != "https" {
-			return fmt.Errorf("unlockAddress must be HTTP or HTTPS")
-		}
+	unlockURL, err := b.parseUrl(ctx, "unlock_address", true, "", "")
+	if err != nil {
+		return err
+	}
+	unlockMethod := data.Get("unlock_method").(string)
+
+	workspaceListURL, err := b.parseUrl(ctx, "workspace_list_address", true, "", "")
+	if err != nil {
+		return err
 	}
 
-	unlockMethod := data.Get("unlock_method").(string)
+	headers := map[string]string{}
+	rawHeaders := data.Get("headers").(map[string]interface{})
+	if rawHeaders != nil {
+		for k, v := range rawHeaders {
+			headers[k] = v.(string)
+		}
+	}
 
 	client := cleanhttp.DefaultPooledClient()
 
@@ -159,6 +197,7 @@ func (b *Backend) configure(ctx context.Context) error {
 
 	b.client = &httpClient{
 		URL:          updateURL,
+		Headers:      headers,
 		UpdateMethod: updateMethod,
 
 		LockURL:      lockURL,
@@ -166,24 +205,52 @@ func (b *Backend) configure(ctx context.Context) error {
 		UnlockURL:    unlockURL,
 		UnlockMethod: unlockMethod,
 
+		WorkspaceListURL: workspaceListURL,
+
 		Username: data.Get("username").(string),
 		Password: data.Get("password").(string),
 
 		// accessible only for testing use
 		Client: rClient,
 	}
+	b.workspacePathElement = data.Get("workspace_path_element").(string)
 	return nil
 }
 
 func (b *Backend) StateMgr(name string) (state.State, error) {
-	if name != backend.DefaultStateName {
-		return nil, backend.ErrWorkspacesNotSupported
+	// workspace enabled
+	if b.workspacePathElement != "" {
+		updateURL, err := b.parseUrl(b.ctx, "address", false, b.workspacePathElement, name)
+		if err != nil {
+			return nil, err
+		}
+
+		lockURL, err := b.parseUrl(b.ctx, "lock_address", true, b.workspacePathElement, name)
+		if err != nil {
+			return nil, err
+		}
+
+		unlockURL, err := b.parseUrl(b.ctx, "unlock_address", true, b.workspacePathElement, name)
+		if err != nil {
+			return nil, err
+		}
+
+		b.client.URL = updateURL
+		b.client.LockURL = lockURL
+		b.client.UnlockURL = unlockURL
+	} else {
+		if name != backend.DefaultStateName {
+			return nil, backend.ErrWorkspacesNotSupported
+		}
 	}
 
 	return &remote.State{Client: b.client}, nil
 }
 
 func (b *Backend) Workspaces() ([]string, error) {
+	if b.client.WorkspaceListURL != nil {
+		return b.client.WorkspaceList()
+	}
 	return nil, backend.ErrWorkspacesNotSupported
 }
 
