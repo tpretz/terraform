@@ -55,6 +55,13 @@ func TestHTTPClientFactory(t *testing.T) {
 		"retry_max":      cty.StringVal("999"),
 		"retry_wait_min": cty.StringVal("15"),
 		"retry_wait_max": cty.StringVal("150"),
+		"workspace_enabled": cty.BoolVal(true),
+		"workspace_path_element": cty.StringVal("cheese"),
+		"workspace_list_address": cty.StringVal("http://127.0.0.1:8888/workspace/list"),
+		"workspace_delete_address": cty.StringVal("http://127.0.0.1:8888/workspace/cheese/delete"),
+		"headers": cty.ObjectVal(map[string]cty.Value{
+			"X-TOKEN": cty.StringVal("secret"),
+		}),
 	}
 
 	b = backend.TestBackendConfig(t, New(), configs.SynthBody("synth", conf)).(*Backend)
@@ -86,5 +93,28 @@ func TestHTTPClientFactory(t *testing.T) {
 	}
 	if client.Client.RetryWaitMax != 150*time.Second {
 		t.Fatalf("Expected retry_wait_max \"%s\", got \"%s\"", 150*time.Second, client.Client.RetryWaitMax)
+	}
+	if b.workspaceEnabled != true {
+		t.Fatalf("Expected workspace_enabled to be \"%s\" got \"%t\"", conf["workspace_enabled"].AsString(),
+			b.workspaceEnabled)
+	}
+	if b.workspacePathElement != "cheese" {
+		t.Fatalf("Expected workspace_path_element \"%s\", got \"%s\"", conf["workspace_path_element"].AsString(),
+			b.workspacePathElement)
+	}
+	if client.WorkspaceListURL.String() != conf["workspace_list_address"].AsString() {
+		t.Fatalf("Unexpected workspace_list_url \"%s\", got \"%s\"", conf["workspace_list_address"].AsString(),
+			client.WorkspaceListURL.String())
+	}
+	if client.WorkspaceDeleteURL.String() != conf["workspace_delete_address"].AsString() {
+		t.Fatalf("Unexpected workspace_delete_url \"%s\", got \"%s\"", conf["workspace_delete_address"].AsString(),
+			client.WorkspaceDeleteURL.String())
+	}
+	if client.Headers == nil {
+		t.Fatalf("Unexpected nil map for client headers")
+	}
+	if client.Headers["X-TOKEN"] != "secret" {
+		t.Fatalf("Unexpected headers entry \"%s\", got \"%s\"", "secret",
+			client.Headers["X-TOKEN"])
 	}
 }
