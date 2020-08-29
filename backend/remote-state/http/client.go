@@ -30,9 +30,9 @@ type httpClient struct {
 	UnlockMethod string
 
 	// Workspace
-	WorkspaceListURL   *url.URL
-	WorkspaceListMethod string
-	WorkspaceDeleteURL *url.URL
+	WorkspaceListURL      *url.URL
+	WorkspaceListMethod   string
+	WorkspaceDeleteURL    *url.URL
 	WorkspaceDeleteMethod string
 
 	// HTTP

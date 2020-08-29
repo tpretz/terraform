@@ -687,9 +687,9 @@ func TestApply_plan_remoteState(t *testing.T) {
 		"workspace_enabled":        cty.NullVal(cty.Bool),
 		"workspace_path_element":   cty.NullVal(cty.String),
 		"workspace_list_address":   cty.NullVal(cty.String),
-		"workspace_list_method":   cty.NullVal(cty.String),
+		"workspace_list_method":    cty.NullVal(cty.String),
 		"workspace_delete_address": cty.NullVal(cty.String),
-		"workspace_delete_method": cty.NullVal(cty.String),
+		"workspace_delete_method":  cty.NullVal(cty.String),
 		"headers":                  cty.ObjectVal(map[string]cty.Value{}),
 	})
 	backendConfigRaw, err := plans.NewDynamicValue(backendConfig, backendConfig.Type())

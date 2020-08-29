@@ -251,18 +251,18 @@ func (b *Backend) configure(ctx context.Context) error {
 
 	b.client = &httpClient{
 		Headers:      headers,
-		URL: updateURL,
+		URL:          updateURL,
 		UpdateMethod: updateMethod,
 
-		LockURL: lockURL,
+		LockURL:      lockURL,
 		LockMethod:   lockMethod,
-		UnlockURL: unlockURL,
+		UnlockURL:    unlockURL,
 		UnlockMethod: unlockMethod,
 
-		WorkspaceListURL:   workspaceListURL,
+		WorkspaceListURL:    workspaceListURL,
 		WorkspaceListMethod: workspaceListMethod,
 
-		WorkspaceDeleteURL: workspaceDeleteURL,
+		WorkspaceDeleteURL:    workspaceDeleteURL,
 		WorkspaceDeleteMethod: workspaceDeleteMethod,
 
 		Username: data.Get("username").(string),
