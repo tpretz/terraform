@@ -239,6 +239,9 @@ func (b *Backend) configure(ctx context.Context) error {
 
 	if b.workspaceEnabled {
 		b.workspacePathElement = data.Get("workspace_path_element").(string)
+		if b.workspacePathElement == "" {
+			return fmt.Errorf("workspace_path_element required when workspace_enabled is true")
+		}
 
 		workspaceListURL, err := url.Parse(data.Get("workspace_list_address").(string))
 		if err != nil {

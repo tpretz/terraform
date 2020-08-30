@@ -67,9 +67,9 @@ The following configuration options are supported:
    Defaults to `30`.
  * `workspace_enabled` - (Optional) Boolean, enable workspace support.
    Defaults to false.
- * `workspace_path_element` - (Optional) String to replace with workspace name in address URLs.
+ * `workspace_path_element` - (Required when workspace_enabled is true) String to replace with workspace name in address URLs.
    Defaults to `<workspace>`.
- * `workspace_list_address` - (Optional) The address of the REST endpoint returning a JSON array of workspace names.
+ * `workspace_list_address` - (Required when workspace_enabled is true) The address of the REST endpoint returning a JSON array of workspace names.
  * `workspace_list_method` - (Optional) The HTTP method for the REST endpoint for workspace list.
    Defaults to `GET`.
  * `workspace_delete_address` - (Optional) The address of the REST endpoint to delete a workspace.
