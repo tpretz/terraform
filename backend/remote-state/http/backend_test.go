@@ -54,7 +54,6 @@ func TestHTTPWorkspaceUrlFunction(t *testing.T) {
 		t.Fatal("string returned not mutated correctly with escaped path")
 	}
 
-
 	// multi replace
 	orig = "http://127.0.0.1/element/teststringtest/else"
 	u, _ = url.Parse(orig)

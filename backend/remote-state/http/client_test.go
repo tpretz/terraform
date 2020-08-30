@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"testing"
 
 	"github.com/hashicorp/go-retryablehttp"
@@ -63,113 +62,94 @@ func TestHTTPClient(t *testing.T) {
 	remote.TestRemoteLocks(t, a, b)
 
 	// test a WebDAV-ish backend
-	davhandler := new(testHTTPHandler)
-	ts = httptest.NewServer(http.HandlerFunc(davhandler.HandleWebDAV))
-	defer ts.Close()
-
-	url, err = url.Parse(ts.URL)
+	handler.Reset()
+	handler.webDav = true
 	client = &httpClient{
 		URL:          url,
 		UpdateMethod: "PUT",
 		Client:       retryablehttp.NewClient(),
 	}
-	if err != nil {
-		t.Fatalf("Parse: %s", err)
-	}
-
 	remote.TestClient(t, client) // first time through: 201
 	remote.TestClient(t, client) // second time, with identical data: 204
 
 	// test a broken backend
-	brokenHandler := new(testBrokenHTTPHandler)
-	brokenHandler.handler = new(testHTTPHandler)
-	ts = httptest.NewServer(http.HandlerFunc(brokenHandler.Handle))
-	defer ts.Close()
-
-	url, err = url.Parse(ts.URL)
-	if err != nil {
-		t.Fatalf("Parse: %s", err)
-	}
-	client = &httpClient{URL: url, Client: retryablehttp.NewClient()}
+	handler.Reset()
+	handler.failNext = true
 	remote.TestClient(t, client)
 }
 
 type testHTTPHandler struct {
-	Data   []byte
-	Locked bool
+	failNext bool
+	webDav bool
+	Data   map[string]string
+	Locked map[string]bool
+}
+
+func (h *testHTTPHandler) Reset() {
+	h.failNext = false
+	h.webDav = false
+	h.Data = nil
+	h.Locked = nil
 }
 
 func (h *testHTTPHandler) Handle(w http.ResponseWriter, r *http.Request) {
+	if h.Data == nil {
+		h.Data = map[string]string{}
+	}
+	if h.Locked == nil {
+		h.Locked = map[string]bool{}
+	}
+
+	if h.failNext {
+		w.WriteHeader(500)
+		h.failNext = false
+		return
+	}
+	path := r.URL.Path
+
 	switch r.Method {
 	case "GET":
-		w.Write(h.Data)
+		if d, ok := h.Data[path]; ok {
+			w.Write([]byte(d))
+		} else {
+			w.WriteHeader(404)
+		}
 	case "PUT":
 		buf := new(bytes.Buffer)
 		if _, err := io.Copy(buf, r.Body); err != nil {
 			w.WriteHeader(500)
 		}
-		w.WriteHeader(201)
-		h.Data = buf.Bytes()
+		bufAsString := string(buf.Bytes())
+
+		// only difference from webdav function is 204 on match
+		if d, ok := h.Data[path]; 
+			ok && h.webDav && bufAsString == d {
+			w.WriteHeader(204)
+		} else {
+			w.WriteHeader(201)
+		}
+
+		h.Data[path] = bufAsString
 	case "POST":
 		buf := new(bytes.Buffer)
 		if _, err := io.Copy(buf, r.Body); err != nil {
 			w.WriteHeader(500)
 		}
-		h.Data = buf.Bytes()
+		h.Data[path] = string(buf.Bytes())
+		w.WriteHeader(201)
 	case "LOCK":
-		if h.Locked {
+		if v, ok := h.Locked[path]; ok && v {
 			w.WriteHeader(423)
 		} else {
-			h.Locked = true
+			h.Locked[path] = true
 		}
 	case "UNLOCK":
-		h.Locked = false
+		delete(h.Locked, path)
 	case "DELETE":
-		h.Data = nil
+		delete(h.Data, path)
 		w.WriteHeader(200)
 	default:
 		w.WriteHeader(500)
 		w.Write([]byte(fmt.Sprintf("Unknown method: %s", r.Method)))
-	}
-}
-
-// mod_dav-ish behavior
-func (h *testHTTPHandler) HandleWebDAV(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case "GET":
-		w.Write(h.Data)
-	case "PUT":
-		buf := new(bytes.Buffer)
-		if _, err := io.Copy(buf, r.Body); err != nil {
-			w.WriteHeader(500)
-		}
-		if reflect.DeepEqual(h.Data, buf.Bytes()) {
-			h.Data = buf.Bytes()
-			w.WriteHeader(204)
-		} else {
-			h.Data = buf.Bytes()
-			w.WriteHeader(201)
-		}
-	case "DELETE":
-		h.Data = nil
-		w.WriteHeader(200)
-	default:
-		w.WriteHeader(500)
-		w.Write([]byte(fmt.Sprintf("Unknown method: %s", r.Method)))
-	}
-}
-
-type testBrokenHTTPHandler struct {
-	lastRequestWasBroken bool
-	handler              *testHTTPHandler
-}
-
-func (h *testBrokenHTTPHandler) Handle(w http.ResponseWriter, r *http.Request) {
-	if h.lastRequestWasBroken {
-		h.lastRequestWasBroken = false
-		h.handler.Handle(w, r)
-	} else {
-		h.lastRequestWasBroken = true
-		w.WriteHeader(500)
 	}
 }
