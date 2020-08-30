@@ -195,32 +195,6 @@ func (b *Backend) configure(ctx context.Context) error {
 	unlockMethod := data.Get("unlock_method").(string)
 	b.unlockURL = unlockURL
 
-	var workspaceListURL *url.URL
-	if v, ok := data.GetOk("workspace_list_address"); ok && v.(string) != "" {
-		var err error
-		workspaceListURL, err = url.Parse(v.(string))
-		if err != nil {
-			return fmt.Errorf("failed to parse workspace_list_address URL: %s", err)
-		}
-		if workspaceListURL.Scheme != "http" && workspaceListURL.Scheme != "https" {
-			return fmt.Errorf("workspace_list_address must be HTTP or HTTPS")
-		}
-	}
-	workspaceListMethod := data.Get("workspace_list_method").(string)
-
-	var workspaceDeleteURL *url.URL
-	if v, ok := data.GetOk("workspace_delete_address"); ok && v.(string) != "" {
-		var err error
-		workspaceDeleteURL, err = url.Parse(v.(string))
-		if err != nil {
-			return fmt.Errorf("failed to parse workspace_delete_address URL: %s", err)
-		}
-		if workspaceDeleteURL.Scheme != "http" && workspaceDeleteURL.Scheme != "https" {
-			return fmt.Errorf("workspace_delete_address must be HTTP or HTTPS")
-		}
-	}
-	workspaceDeleteMethod := data.Get("workspace_delete_method").(string)
-
 	headers := map[string]string{}
 	rawHeaders := data.Get("headers").(map[string]interface{})
 	if rawHeaders != nil {
@@ -228,11 +202,6 @@ func (b *Backend) configure(ctx context.Context) error {
 			headers[k] = v.(string)
 		}
 	}
-
-	b.workspaceEnabled = data.Get("workspace_enabled").(bool)
-	b.workspacePathElement = data.Get("workspace_path_element").(string)
-
-	// check workspace required attributes set
 
 	client := cleanhttp.DefaultPooledClient()
 
@@ -259,18 +228,50 @@ func (b *Backend) configure(ctx context.Context) error {
 		UnlockURL:    unlockURL,
 		UnlockMethod: unlockMethod,
 
-		WorkspaceListURL:    workspaceListURL,
-		WorkspaceListMethod: workspaceListMethod,
-
-		WorkspaceDeleteURL:    workspaceDeleteURL,
-		WorkspaceDeleteMethod: workspaceDeleteMethod,
-
 		Username: data.Get("username").(string),
 		Password: data.Get("password").(string),
 
 		// accessible only for testing use
 		Client: rClient,
 	}
+
+	b.workspaceEnabled = data.Get("workspace_enabled").(bool)
+
+	if b.workspaceEnabled {
+		b.workspacePathElement = data.Get("workspace_path_element").(string)
+
+		workspaceListURL, err := url.Parse(data.Get("workspace_list_address").(string))
+		if err != nil {
+			return fmt.Errorf("failed to parse workspace_list_address URL: %s", err)
+		}
+		if workspaceListURL.Scheme != "http" && workspaceListURL.Scheme != "https" {
+			return fmt.Errorf("workspace_list_address must be HTTP or HTTPS")
+		}
+		workspaceListMethod := data.Get("workspace_list_method").(string)
+
+		// optional
+		var workspaceDeleteURL *url.URL
+		if v, ok := data.GetOk("workspace_delete_address"); ok && v.(string) != "" {
+			var err error
+			workspaceDeleteURL, err = url.Parse(data.Get("workspace_delete_address").(string))
+			if err != nil {
+				return fmt.Errorf("failed to parse workspace_delete_address URL: %s", err)
+			}
+			if workspaceDeleteURL.Scheme != "http" && workspaceDeleteURL.Scheme != "https" {
+				return fmt.Errorf("workspace_delete_address must be HTTP or HTTPS")
+			}
+		} else { // default to stateUrl
+			u := *updateURL
+			workspaceDeleteURL = &u
+		}
+		workspaceDeleteMethod := data.Get("workspace_delete_method").(string)
+
+		b.client.WorkspaceListURL = workspaceListURL
+		b.client.WorkspaceListMethod = workspaceListMethod
+		b.client.WorkspaceDeleteURL = workspaceDeleteURL
+		b.client.WorkspaceDeleteMethod = workspaceDeleteMethod
+	}
+
 	return nil
 }
 
@@ -295,11 +296,7 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 		b.client.UnlockURL = unlockUrl
 
 	} else {
-		if name == backend.DefaultStateName {
-			b.client.URL = b.updateURL
-			b.client.LockURL = b.lockURL
-			b.client.UnlockURL = b.unlockURL
-		} else {
+		if name != backend.DefaultStateName {
 			return nil, backend.ErrWorkspacesNotSupported
 		}
 	}

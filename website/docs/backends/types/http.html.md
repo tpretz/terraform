@@ -73,6 +73,7 @@ The following configuration options are supported:
  * `workspace_list_method` - (Optional) The HTTP method for the REST endpoint for workspace list.
    Defaults to `GET`.
  * `workspace_delete_address` - (Optional) The address of the REST endpoint to delete a workspace.
+   Defaults to the value of `address`.
  * `workspace_delete_method` - (Optional) The HTTP method for the REST endpoint for workspace delete.
    Defaults to `DELETE`.
  * `headers` - (Optional) Map of HTTP headers to include with every request.
