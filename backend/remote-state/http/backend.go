@@ -319,7 +319,7 @@ func (b *Backend) Workspaces() ([]string, error) {
 	return b.client.WorkspaceList()
 }
 
-func (c *Backend) workspaceUrlSubstitute(u *url.URL, old string, new string) (*url.URL, error) {
+func (b *Backend) workspaceUrlSubstitute(u *url.URL, old string, new string) (*url.URL, error) {
 	origPath := u.RawPath
 	if origPath == "" {
 		origPath = u.Path

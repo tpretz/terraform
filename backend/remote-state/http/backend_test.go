@@ -3,6 +3,7 @@ package http
 import (
 	"testing"
 	"time"
+	"net/url"
 
 	"github.com/hashicorp/terraform/configs"
 	"github.com/zclconf/go-cty/cty"
@@ -12,6 +13,58 @@ import (
 
 func TestBackend_impl(t *testing.T) {
 	var _ backend.Backend = new(Backend)
+}
+
+func TestHTTPWorkspaceUrlFunction(t *testing.T) {
+	conf := map[string]cty.Value{
+		"address": cty.StringVal("http://127.0.0.1:8888/foo"),
+	}
+	b := backend.TestBackendConfig(t, New(), configs.SynthBody("synth", conf)).(*Backend)
+
+	// no path
+	orig := "http://127.0.0.1"
+	u, _ := url.Parse(orig)
+	u2, err := b.workspaceUrlSubstitute(u, "test", "tset")
+	if err != nil {
+		t.Fatal("unexpected error from url substitute function")
+	}
+	if u2.String() != orig {
+		t.Fatal("string returned has been changed")
+	}
+
+	// simple path
+	orig = "http://127.0.0.1/element/teststring/else"
+	u, _ = url.Parse(orig)
+	u2, err = b.workspaceUrlSubstitute(u, "test", "tset")
+	if err != nil {
+		t.Fatal("unexpected error from url substitute function 2")
+	}
+	if u2.String() != "http://127.0.0.1/element/tsetstring/else"{
+		t.Fatal("string returned not mutated correctly")
+	}
+
+	// escaped path
+	orig = "http://127.0.0.1/element/<teststring>/else"
+	u, _ = url.Parse(orig)
+	u2, err = b.workspaceUrlSubstitute(u, "<teststring>", ">tset<")
+	if err != nil {
+		t.Fatal("unexpected error from url substitute function 3")
+	}
+	if u2.String() != "http://127.0.0.1/element/%3Etset%3C/else"{
+		t.Fatal("string returned not mutated correctly with escaped path")
+	}
+
+
+	// multi replace
+	orig = "http://127.0.0.1/element/teststringtest/else"
+	u, _ = url.Parse(orig)
+	u2, err = b.workspaceUrlSubstitute(u, "test", "tset")
+	if err != nil {
+		t.Fatal("unexpected error from url substitute function 4")
+	}
+	if u2.String() != "http://127.0.0.1/element/tsetstringtset/else"{
+		t.Fatal("string returned not mutated correctly in multi replace")
+	}
 }
 
 func TestHTTPClientFactory(t *testing.T) {
@@ -40,6 +93,57 @@ func TestHTTPClientFactory(t *testing.T) {
 	}
 	if client.Username != "" || client.Password != "" {
 		t.Fatal("Unexpected username or password")
+	}
+
+	// workspace disabled
+	conf = map[string]cty.Value{
+		"address": cty.StringVal("http://127.0.0.1:8888/foo"),
+		"workspace_path_element":   cty.StringVal("cheese"),
+		"workspace_list_address":   cty.StringVal("http://127.0.0.1:8888/workspace/list"),
+		"workspace_delete_address": cty.StringVal("http://127.0.0.1:8888/workspace/cheese/delete"),
+	}
+	b = backend.TestBackendConfig(t, New(), configs.SynthBody("synth", conf)).(*Backend)
+	client = b.client
+	
+	// ensure with workspaces disabled, all of this is unset
+	if client.WorkspaceListURL != nil {
+		t.Fatal("unexpected value set in WorkspaceListURL")
+	}
+	if client.WorkspaceListMethod != "" {
+		t.Fatal("unexpected value set in WorkspaceListMethod")
+	}
+	if client.WorkspaceDeleteURL != nil {
+		t.Fatal("unexpected value set in WorkspaceDeleteURL")
+	}
+	if client.WorkspaceDeleteMethod != "" {
+		t.Fatal("unexpected value set in WorkspaceDeleteMethod")
+	}
+	if b.workspacePathElement != "" {
+		t.Fatal("unexpected value set in workspacePathElement")
+	}
+	
+	// check state manager works for default
+	_, err := b.StateMgr("default")
+	if err != nil {
+		t.Fatal("unexpected error getting default state manager")
+	}
+
+	// check workspace functions return expected errors
+	_, err = b.StateMgr("test")
+	if err != ErrWorkspaceDisabled {
+		t.Fatal("incorrect error response for a workspace state when workspaces disabled")
+	}
+	
+	// workspace list should fail
+	_, err = b.Workspaces()
+	if err != ErrWorkspaceDisabled {
+		t.Fatal("incorrect error response for workspace list when workspaces disabled")
+	}
+	
+	// workspace delete should fail
+	err = b.DeleteWorkspace("test")
+	if err != ErrWorkspaceDisabled {
+		t.Fatal("incorrect error response for workspace delete when workspaces disabled")
 	}
 
 	// custom
