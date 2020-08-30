@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -15,6 +16,10 @@ import (
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/states/remote"
 	"github.com/hashicorp/terraform/states/statemgr"
+)
+
+var (
+	ErrWorkspaceDisabled = errors.New("workspace_enabled is not true, workspaces disabled")
 )
 
 func New() backend.Backend {
@@ -300,7 +305,7 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 
 	} else {
 		if name != backend.DefaultStateName {
-			return nil, backend.ErrWorkspacesNotSupported
+			return nil, ErrWorkspaceDisabled
 		}
 	}
 
@@ -309,7 +314,7 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, error) {
 
 func (b *Backend) Workspaces() ([]string, error) {
 	if !b.workspaceEnabled {
-		return nil, backend.ErrWorkspacesNotSupported
+		return nil, ErrWorkspaceDisabled
 	}
 	return b.client.WorkspaceList()
 }
@@ -329,7 +334,7 @@ func (c *Backend) workspaceUrlSubstitute(u *url.URL, old string, new string) (*u
 
 func (b *Backend) DeleteWorkspace(del string) error {
 	if !b.workspaceEnabled {
-		return backend.ErrWorkspacesNotSupported
+		return ErrWorkspaceDisabled
 	}
 	u, err := b.workspaceUrlSubstitute(b.client.WorkspaceDeleteURL, b.workspacePathElement, del)
 	if err != nil {
