@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -134,9 +135,20 @@ func New() backend.Backend {
 				Description: "The HTTP method to use when deleting a workspace.",
 			},
 			"headers": &schema.Schema{
-				Type:        schema.TypeMap,
-				Optional:    true,
-				DefaultFunc: schema.EnvDefaultFunc("TF_HTTP_HEADERS", nil),
+				Type:     schema.TypeMap,
+				Optional: true,
+				DefaultFunc: func() (interface{}, error) {
+					v, err := schema.EnvDefaultFunc("TF_HTTP_HEADERS", nil)()
+					if err != nil || v == nil {
+						return nil, err
+					}
+					decode := map[string]interface{}{}
+					err = json.Unmarshal([]byte(v.(string)), &decode)
+					if err != nil {
+						return nil, err
+					}
+					return decode, nil
+				},
 				Elem: &schema.Schema{
 					Type:        schema.TypeString,
 					Description: "Header Value",

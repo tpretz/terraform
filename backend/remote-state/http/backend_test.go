@@ -349,7 +349,7 @@ func TestHTTPClientFactoryWithEnv(t *testing.T) {
 	defer testWithEnv(t, "TF_HTTP_WORKSPACE_LIST_ADDRESS", conf["workspace_list_address"])()
 	defer testWithEnv(t, "TF_HTTP_WORKSPACE_LIST_METHOD", conf["workspace_list_method"])()
 	defer testWithEnv(t, "TF_HTTP_WORKSPACE_DELETE_ADDRESS", conf["workspace_delete_address"])()
-	defer testWithEnv(t, "TF_HTTP_WORKSPACE_DELETE_METHOD", conf["workspace_delete_address"])()
+	defer testWithEnv(t, "TF_HTTP_WORKSPACE_DELETE_METHOD", conf["workspace_delete_method"])()
 
 	b := backend.TestBackendConfig(t, New(), nil).(*Backend)
 	client := b.client
