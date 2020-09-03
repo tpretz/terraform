@@ -100,13 +100,13 @@ func New() backend.Backend {
 			"workspace_enabled": &schema.Schema{
 				Type:        schema.TypeBool,
 				Optional:    true,
-				DefaultFunc: schema.EnvDefaultFunc("TF_HTTP_WORKSPACE", false),
+				DefaultFunc: schema.EnvDefaultFunc("TF_HTTP_WORKSPACE_ENABLED", false),
 				Description: "Enable workspace support.",
 			},
 			"workspace_path_element": &schema.Schema{
 				Type:        schema.TypeString,
 				Optional:    true,
-				DefaultFunc: schema.EnvDefaultFunc("TF_HTTP_WORKSPACE", "<workspace>"),
+				DefaultFunc: schema.EnvDefaultFunc("TF_HTTP_WORKSPACE_PATH_ELEMENT", "<workspace>"),
 				Description: "The URL path string to replace with the active workspace name.",
 			},
 			"workspace_list_address": &schema.Schema{
