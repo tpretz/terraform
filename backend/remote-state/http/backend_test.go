@@ -1,6 +1,7 @@
 package http
 
 import (
+	"net/http"
 	"net/url"
 	"os"
 	"testing"
@@ -322,6 +323,7 @@ func TestHTTPClientFactoryWithEnv(t *testing.T) {
 		"retry_max":      "999",
 		"retry_wait_min": "15",
 		"retry_wait_max": "150",
+		"skip_cert":      "true",
 	}
 
 	defer testWithEnv(t, "TF_HTTP_ADDRESS", conf["address"])()
@@ -335,6 +337,7 @@ func TestHTTPClientFactoryWithEnv(t *testing.T) {
 	defer testWithEnv(t, "TF_HTTP_RETRY_MAX", conf["retry_max"])()
 	defer testWithEnv(t, "TF_HTTP_RETRY_WAIT_MIN", conf["retry_wait_min"])()
 	defer testWithEnv(t, "TF_HTTP_RETRY_WAIT_MAX", conf["retry_wait_max"])()
+	defer testWithEnv(t, "TF_HTTP_SKIP_CERT", conf["skip_cert"])()
 
 	b := backend.TestBackendConfig(t, New(), nil).(*Backend)
 	client := b.client
@@ -365,6 +368,9 @@ func TestHTTPClientFactoryWithEnv(t *testing.T) {
 	}
 	if client.Client.RetryWaitMax != 150*time.Second {
 		t.Fatalf("Expected retry_wait_max \"%s\", got \"%s\"", 150*time.Second, client.Client.RetryWaitMax)
+	}
+	if !client.Client.HTTPClient.Transport.(*http.Transport).TLSClientConfig.InsecureSkipVerify {
+		t.Fatal("Expected skip_cert \"true\", got \"false\"")
 	}
 }
 
